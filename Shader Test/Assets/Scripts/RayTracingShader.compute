@@ -1,7 +1,7 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CSMain
 
-RWTexture2D Result;
+RWTexture2D<float4> Result;
 float4x4 _CameraToWorld;
 float4x4 _CameraInverseProjection;
 
@@ -34,7 +34,7 @@ Ray CreateCameraRay(float2 uv){
 [numthreads(8,8,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
-    // RenderTexture
+    // Get dimensions of RenderTexture
     uint width, height;
     Result.GetDimensions(width, height);
     float2 uv = float2((id.xy + float2(0.5f, 0.5f)) / float2(width, height) * 2.0f - 1.0f);

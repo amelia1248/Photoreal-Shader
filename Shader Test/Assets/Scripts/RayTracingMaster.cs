@@ -8,7 +8,7 @@ public class RayTracingMaster : MonoBehaviour
 
 
     private void Awake(){
-        _camera = GetComponent();
+        _camera = GetComponent<Camera>();
     }
 
     private void SetShaderParameters(){
@@ -20,11 +20,11 @@ public class RayTracingMaster : MonoBehaviour
     /// <summary>
     /// Initializing the RenderTexture that we target.
     /// </summary>
-    private void InitTargetRenderTexture(){
+    private void InitRenderTexture(){
         // If the _target attribute is not equal to either dimension of the current screen in Unity
         // Using Unity scripting API documentation to access target's attributes
-        if (_target == null || _target.width != Screen.width || target.height != Screen.height){
-            if (_target == null){
+        if (_target == null || _target.width != Screen.width || _target.height != Screen.height){
+            if (_target != null){
                 _target.Release();  // If _target exists, we release without being collected for garbage
             }
             // Initialize new target for ray tracing
@@ -43,12 +43,12 @@ public class RayTracingMaster : MonoBehaviour
         // Ensure current target for rendering
         InitRenderTexture();
 
-        RayTracingShader.SetTexture(0, "Result", _target)   // Sets a texture parameter for our ComputeShader
-        int threadGroupsX = Mathf.CeiltoInt(Screen.width / 8.0f);
-        int threadGroupsY = Mathf.CeiltoInt(Screen.height / 8.0f);
+        RayTracingShader.SetTexture(0, "Result", _target);   // Sets a texture parameter for our ComputeShader
+        int threadGroupsX = Mathf.CeilToInt(Screen.width / 8.0f);
+        int threadGroupsY = Mathf.CeilToInt(Screen.height / 8.0f);
         RayTracingShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);  // Executes our Compute Shader to the screen
 
-        Graphics.blit(_target, destination);    // Raw interface to Unity's drawing function... blit copipes pixel data from a texture to a render texture
+        Graphics.Blit(_target, destination);    // Raw interface to Unity's drawing function... blit copipes pixel data from a texture to a render texture
     }
 
 
@@ -58,8 +58,8 @@ public class RayTracingMaster : MonoBehaviour
     /// <param name="source"></param> Texture the shader comes from.
     /// <param name="destination"></param> Texture the shader affects. 
     private void OnRenderImage(RenderTexture source, RenderTexture destination){
-        SetShaderParameters()
-        Render(destination)
+        SetShaderParameters();
+        Render(destination);
     }
 
 }
