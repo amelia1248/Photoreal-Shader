@@ -15,6 +15,7 @@ float2 _PixelOffset;
 struct Ray{
     float3 origin;  // Declaring variables before they are used.
     float3 direction;
+    float3 energy;
 };
 
 
@@ -22,6 +23,7 @@ Ray CreateRay(float3 origin, float3 direction){
     Ray ray;
     ray.origin = origin;
     ray.direction = direction;
+    ray.energy = float3(1.0f, 1.0f, 1.0f);  // Initialized to have FULL throughput on ALL COLOUR CHANNELS... and will diminish with reflections
     return ray;
 }
 
@@ -83,11 +85,23 @@ void IntersectSphere(Ray ray, inout RayHit bestHit, float4 sphere)
 }
 
 
+void MassIntersectSphere(Ray ray, inout RayHit bestHit) 
+{
+    float4 newSphere = float4(0, 3.0f, 1.0f, 1.0f);
+    for (int i = 0; i < 8; i++) {
+        IntersectSphere(ray, bestHit, newSphere);
+        newSphere = newSphere + float4(0, 0, 2.5f, 0);
+    }
+}
+
+
+
 RayHit Trace(Ray ray)
 {
     RayHit bestHit = CreateRayHit();
     IntersectGround(ray, bestHit);
-    IntersectSphere(ray, bestHit, float4(0, 3.0f, 0, 1.0f));
+    // IntersectSphere(ray, bestHit, float4(0, 3.0f, 0, 1.0f));
+    MassIntersectSphere(ray, bestHit);
     return bestHit;
 }
 
@@ -96,13 +110,23 @@ RayHit Trace(Ray ray)
 
 float3 Shade(inout Ray ray, RayHit hit)
 {
-    if (hit.distance < 1.#INF)
+    if (hit.distance < 1.#INF)  // If we are within a certain distance, REFLECT
     {
-        // If object is hit, return NORMAL
-        return hit.normal * 0.5f + 0.5f;
+        float3 specular = float3(0.6f, 0.6f, 0.6f); // Setting specular reflectivity of 60% bc. any higher doesn't look realistic
+        // We reassign the ray's values which represents REFLECTION
+        ray.origin = hit.position + hit.normal * 0.001f;
+        ray.direction = reflect(ray.direction, hit.normal);
+        // Multipy energy with specular reflection
+        ray.energy = ray.energy * specular;
+        // Return nothing once done!
+        return float3(0.0f, 0.0f, 0.0f);
+
+
     }
     else
     {
+        // Reassign ray's energy to 0, since the sky shouldn't reflect anything
+        ray.energy = 0.0f;
         // If object is missed, sample the skybox
         float theta = acos(ray.direction.y) / -PI;
         float phi = atan2(ray.direction.x, -ray.direction.z) / -PI * 0.5f;
@@ -125,7 +149,18 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     float phi = atan2(ray.direction.x, -ray.direction.z) / -PI * 0.5f;
     // Result[id.xy] = _SkyboxTexture.SampleLevel(sampler_SkyboxTexture, float2(phi, theta), 0);
 
-    RayHit hit = Trace(ray);    // Traces ray and distance along which it intersects with ground plane
-    float3 result = Shade(ray, hit);    // Determining if object was hit or not
+    // RayHit hit = Trace(ray);    // Traces ray and distance along which it intersects with ground plane
+    // float3 result = Shade(ray, hit);    // Determining if object was hit or not
+
+    // Replacing Trace and Shade functions
+    float3 result = float3(0, 0, 0);
+    for (int i = 0; i < 8; i++) // For a MAX. of 8 reflections
+    {
+        RayHit hit = Trace(ray);
+        result += ray.energy * Shade(ray, hit);
+
+        if (!any(ray.energy))
+            break;
+    }
     Result[id.xy] = float4(result, 1);  // Writing result to shader
 }
