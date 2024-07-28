@@ -4,6 +4,10 @@
 RWTexture2D<float4> Result;
 float4x4 _CameraToWorld;
 float4x4 _CameraInverseProjection;
+Texture2D _SkyboxTexture;
+SamplerState sampler_SkyboxTexture;
+static const float PI = 3.14159265f;
+float2 _PixelOffset;
 
 // This is a HLSL... a function or variable needs to appear BEFORE it is used!!!
 
@@ -31,14 +35,97 @@ Ray CreateCameraRay(float2 uv){
 }
 
 
+// RAY TRACING DEFINITIONS:
+
+struct RayHit{
+    float3 position;
+    float distance;
+    float3 normal;
+};
+
+RayHit CreateRayHit(){
+    RayHit hit;
+    hit.position = float3(0.0f, 0.0f, 0.0f);
+    hit.distance = 1.#INF;
+    hit.normal = float3(0.0f, 0.0f, 0.0f);
+    return hit;
+}
+
+// Intersecting Rays with Objects
+
+void IntersectGround(Ray ray, inout RayHit bestHit)
+{
+    float t = -ray.origin.y / ray.direction.y;
+    if (t > 0 && t < bestHit.distance)
+    {
+        bestHit.distance = t;
+        bestHit.position = ray.origin + t * ray.direction;
+        bestHit.normal = float3(0.0f, 1.0f, 0.0f);  // Normal is always same direction
+    }
+}
+
+void IntersectSphere(Ray ray, inout RayHit bestHit, float4 sphere)
+{
+    float3 d = ray.origin - sphere.xyz;   // Measuring distance ALONG the ray where the sphere intersects it(length of ray blocked by sphere)
+    float p1 = -dot(ray.direction, d);    // 
+    float p2sqr = p1 * p1 - dot(d, d) + sphere.w * sphere.w;
+    if (p2sqr < 0)
+        return;
+    float p2 = sqrt(p2sqr);
+    float t = p1 - p2 > 0 ? p1 - p2 : p1 + p2;  // Entry point is p1 - p2, exit point is p1 + p2
+    if (t > 0 && t < bestHit.distance)
+    {
+        bestHit.distance = t;
+        bestHit.position = ray.origin + t * ray.direction;
+        bestHit.normal = normalize(bestHit.position - sphere.xyz);
+    }
+
+}
+
+
+RayHit Trace(Ray ray)
+{
+    RayHit bestHit = CreateRayHit();
+    IntersectGround(ray, bestHit);
+    IntersectSphere(ray, bestHit, float4(0, 3.0f, 0, 1.0f));
+    return bestHit;
+}
+
+// If object is hit, return NORMAL
+// If object is missed, return skybox sampling code
+
+float3 Shade(inout Ray ray, RayHit hit)
+{
+    if (hit.distance < 1.#INF)
+    {
+        // If object is hit, return NORMAL
+        return hit.normal * 0.5f + 0.5f;
+    }
+    else
+    {
+        // If object is missed, sample the skybox
+        float theta = acos(ray.direction.y) / -PI;
+        float phi = atan2(ray.direction.x, -ray.direction.z) / -PI * 0.5f;
+        return _SkyboxTexture.SampleLevel(sampler_SkyboxTexture, float2(phi, theta), 0).xyz;
+    }
+}
+
 [numthreads(8,8,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
     // Get dimensions of RenderTexture
     uint width, height;
     Result.GetDimensions(width, height);
-    float2 uv = float2((id.xy + float2(0.5f, 0.5f)) / float2(width, height) * 2.0f - 1.0f);
+    float2 uv = float2((id.xy + _PixelOffset) / float2(width, height) * 2.0f - 1.0f);
     Ray ray = CreateCameraRay(uv);
 
-    Result[id.xy] = float4(ray.direction * 0.5f + 0.5f, 1.0f);
+    // Result[id.xy] = float4(ray.direction * 0.5f + 0.5f, 1.0f);
+    // Sample the skybox and write it
+    float theta = acos(ray.direction.y) / -PI;  // Taken from cartesian direction vestor to spherical coordinate formulas
+    float phi = atan2(ray.direction.x, -ray.direction.z) / -PI * 0.5f;
+    // Result[id.xy] = _SkyboxTexture.SampleLevel(sampler_SkyboxTexture, float2(phi, theta), 0);
+
+    RayHit hit = Trace(ray);    // Traces ray and distance along which it intersects with ground plane
+    float3 result = Shade(ray, hit);    // Determining if object was hit or not
+    Result[id.xy] = float4(result, 1);  // Writing result to shader
 }
