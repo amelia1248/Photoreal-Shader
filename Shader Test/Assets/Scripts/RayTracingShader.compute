@@ -1,0 +1,44 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+RWTexture2D Result;
+float4x4 _CameraToWorld;
+float4x4 _CameraInverseProjection;
+
+// This is a HLSL... a function or variable needs to appear BEFORE it is used!!!
+
+
+struct Ray{
+    float3 origin;  // Declaring variables before they are used.
+    float3 direction;
+};
+
+
+Ray CreateRay(float3 origin, float3 direction){
+    Ray ray;
+    ray.origin = origin;
+    ray.direction = direction;
+    return ray;
+}
+
+Ray CreateCameraRay(float2 uv){
+    float3 origin = mul(_CameraToWorld, float4(0.0f, 0.0f, 0.0f, 1.0f)).xyz;    // Transforming camera origin to world spcae, which can be freely positioned
+    float3 direction = mul(_CameraInverseProjection, float4(uv, 0.0f, 1.0f)).xyz;   // Invert projection of view-space position
+    direction = mul(_CameraToWorld, float4(direction, 0.0f)).xyz;   // Transform direction from camera to world space
+    direction = normalize(direction);   // Normalize direction
+
+    return CreateRay(origin, direction);
+}
+
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    // RenderTexture
+    uint width, height;
+    Result.GetDimensions(width, height);
+    float2 uv = float2((id.xy + float2(0.5f, 0.5f)) / float2(width, height) * 2.0f - 1.0f);
+    Ray ray = CreateCameraRay(uv);
+
+    Result[id.xy] = float4(ray.direction * 0.5f + 0.5f, 1.0f);
+}
